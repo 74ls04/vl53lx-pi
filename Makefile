@@ -8,7 +8,7 @@ OUTPUT_DIR = bin
 OBJ_DIR = obj
 
 COMMON_LIBS = -lzmq
-TARGET_LIB = $(OUTPUT_DIR)/libVL53L3CX_rasppi.a
+TARGET_LIB = $(OUTPUT_DIR)/libVL53L3CX_pi.a
 
 INCLUDES = \
 	-I. \
@@ -65,7 +65,7 @@ $(OBJ_DIR)/%.o:%.c
 
 $(OPTICAL_BIN): bin/%:optical/%.c
 	mkdir -p $(dir $@)
-	$(CC) -L$(OUTPUT_DIR) $^ -lVL53L3CX_rasppi ${COMMON_LIBS} $(INCLUDES) -o $@
+	$(CC) -L$(OUTPUT_DIR) $^ -lVL53L3CX_pi ${COMMON_LIBS} $(INCLUDES) -o $@
 
 optical:${OUTPUT_DIR} ${TARGET_LIB} $(OPTICAL_BIN)
 

@@ -24,12 +24,44 @@ VL53LX_Dev_t dev;
 VL53LX_DEV Dev = &dev;
 int status;
 
+// Command line options
+bool hist_flag = false;
+bool debug_flag = false;
+int poll_period = 100;
+int timing_budget = 33; // 8ms to 500ms
 
 void RangingLoop(void); 
 void ctrl_c_handler(int signal);
 
-int main(void)
+int main(int argc, char *argv[])
 {
+
+
+  int opt;
+
+  while ((opt = getopt(argc, argv, "bdp:t:")) != -1) {
+    switch (opt) {
+      case 'b':
+        hist_flag = true;
+        break;
+      case 'd':
+        debug_flag = true;
+        break;
+      case 'p':
+        poll_period = atoi(optarg);
+        break;
+      case 't':
+        timing_budget = atoi(optarg);
+        break;
+      case '?':
+      default:
+        fprintf(stderr, "Usage: %s [-b] [-p poll_period (ms)] [-t timing_budget (8 - 500ms)]\n", argv[0]);
+        // fprintf(stderr, "Usage: %s [-b] [-p poll_period (ms)]\n", argv[0]);
+        // fprintf(stderr, "Usage: %s [-b]\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+  }
+
   // Register signal handler
   signal(SIGINT, ctrl_c_handler);
 
@@ -46,6 +78,9 @@ int main(void)
   fprintf(fp, "%d", XSHUTPIN);
   fclose(fp);
 
+  // Give the udev rules a chance to make the GPIO available
+  sleep(1);
+  
   // Set GPIO4 as output
   sprintf(buf, "/sys/class/gpio/gpio%d/direction", XSHUTPIN);
   fp = fopen(buf, "w");
@@ -143,6 +178,8 @@ void RangingLoop(void)
   int no_of_object_found = 0;
   int j;
   char tmp_data1[5], tmp_data2[512], data[3000];
+  char histogram_data_buffer[500];
+  char bin_buffer[5];
 
   printf("Ranging loop starts...\n");
 
@@ -155,7 +192,7 @@ void RangingLoop(void)
     raise(SIGTERM);
   }
 
-  status = VL53LX_SetMeasurementTimingBudgetMicroSeconds(Dev, 200000);
+  status = VL53LX_SetMeasurementTimingBudgetMicroSeconds(Dev, timing_budget * 1000);
   status = VL53LX_StartMeasurement(Dev);
 
   do
@@ -164,7 +201,7 @@ void RangingLoop(void)
     status2 = VL53LX_GetDistanceMode(Dev, distance_mode);
     status = VL53LX_GetMeasurementDataReady(Dev, &NewDataReady);
 
-    usleep(200000); // 200 millisecond polling period, could be 1 millisecond.
+    usleep(poll_period * 1000); // Polling period
 
     if ((!status) && (NewDataReady != 0))
     {
@@ -196,11 +233,23 @@ void RangingLoop(void)
 
     */
 
+      no_of_object_found = pMultiRangingData->NumberOfObjectsFound;
+            // zmq topic
+      strcat(data, "sensor1 ");
+
+      sprintf(tmp_data1, "%d ", pMultiRangingData->StreamCount);
+      strcat(data, tmp_data1);
+      memset(tmp_data1, 0, sizeof(tmp_data1));
+
+      // Process if object is found
+      if (no_of_object_found > 0) {
+
+
+      if (hist_flag) {  
       VL53LX_GetAdditionalData(Dev, pAdditionalData);
 
       // Convert the histogram data to a comma-separated string
-      char histogram_data_buffer[500];
-      char bin_buffer[5];
+
 
       for (j = 0; j < VL53LX_HISTOGRAM_BUFFER_SIZE; j++)
       {
@@ -234,17 +283,11 @@ void RangingLoop(void)
           printf("\n");
       } */
 
-      no_of_object_found = pMultiRangingData->NumberOfObjectsFound;
-
-      // zmq topic
-      strcat(data, "sensor1 ");
-
-      sprintf(tmp_data1, "%d ", pMultiRangingData->StreamCount);
-      strcat(data, tmp_data1);
-      memset(tmp_data1, 0, sizeof(tmp_data1));
-
+      
       // Copy to data buffer
       strcat(data, histogram_data_buffer);
+      }
+//
 
       for (j = 0; j < no_of_object_found; j++)
       {
@@ -276,13 +319,16 @@ void RangingLoop(void)
 
         strcat(data, tmp_data2);
         memset(tmp_data2, 0, sizeof(tmp_data2));
-
-        // printf("Status=%d, D=%5dmm, S=%7dmm, Signal=%2.2f Mcps, Ambient=%2.2f Mcps",
-        //        pMultiRangingData->RangeData[j].RangeStatus,
-        //        pMultiRangingData->RangeData[j].RangeMilliMeter,
-        //        pMultiRangingData->RangeData[j].SigmaMilliMeter,
-        //        pMultiRangingData->RangeData[j].SignalRateRtnMegaCps/65536.0,
-        //        pMultiRangingData->RangeData[j].AmbientRateRtnMegaCps/65536.0);
+        if (debug_flag) {
+        printf("Status=%d\nMin Distance=%d mm\nDistance=%d mm\nMax distance=%d mm\nSigma=%2.2f mm\nSignal Rate=%2.2f Mcps\nAmbient Rate=%2.2f Mcps\n",
+                  pMultiRangingData->RangeData[j].RangeStatus,
+                  pMultiRangingData->RangeData[j].RangeMinMilliMeter,
+                  pMultiRangingData->RangeData[j].RangeMilliMeter,
+                  pMultiRangingData->RangeData[j].RangeMaxMilliMeter,
+                  pMultiRangingData->RangeData[j].SigmaMilliMeter / 65536.0,
+                  pMultiRangingData->RangeData[j].SignalRateRtnMegaCps / 65536.0,
+                  pMultiRangingData->RangeData[j].AmbientRateRtnMegaCps / 65536.0);
+        }
       }
 
       printf("\n%s", data);
@@ -291,9 +337,14 @@ void RangingLoop(void)
       rc = zmq_send(publisher, data, strlen(data), 0);
 
       // clear buffers
+      if (hist_flag) {
       memset(histogram_data_buffer, 0, sizeof(histogram_data_buffer));
       memset(bin_buffer, 0, sizeof(bin_buffer));
+      }
+
       memset(data, 0, sizeof(data));
+      }
+
       if (status == 0)
       {
         status = VL53LX_ClearInterruptAndStartMeasurement(Dev);
