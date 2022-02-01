@@ -1,0 +1,13 @@
+{
+    "files.associations": {
+        "select.h": "c",
+        "vl53lx_ll_def.h": "c",
+        "vl53lx_platform.h": "c",
+        "vl53lx_hist_map.h": "c",
+        "stdio.h": "c",
+        "vl53lx_api_debug.h": "c",
+        "vl53lx_register_map.h": "c",
+        "fcntl.h": "c",
+        "vl53lx_api.h": "c"
+    }
+}
