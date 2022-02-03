@@ -15,7 +15,7 @@ Based on the i2c port of https://github.com/74ls04/VL53L3CX_rasppi
 #include <czmq.h>
 #include <assert.h>
 
-#define XSHUTPIN 4 // GPIO4
+// #define XSHUTPIN 4 // GPIO4
 
 // Requires zeromq library for publishing sensor data over the network. 
 //    apt-get install libczmq-dev
@@ -24,40 +24,100 @@ VL53LX_Dev_t dev;
 VL53LX_DEV Dev = &dev;
 int status;
 
+enum hist_mode {
+    HIST_A,
+    HIST_B,
+    HIST_BOTH,
+};
+
 // Command line options
-bool hist_flag = false;
-bool debug_flag = false;
-int poll_period = 100;
-int timing_budget = 33; // 8ms to 500ms
+bool hist_flag = false; // Flag to enable histogram mode
+enum hist_mode hist_mode = HIST_B; // [-g] Histogram mode. A, B, or AB for both. (default: B)
+bool formatted_flag = false; // [-f] Enable debug messages
+int poll_period = 100; // [-p] Device polling period in (ms)
+int timing_budget = 33; // [-t] VL53L3CX timing budget (8ms to 500ms)
+int XSHUTPIN = 4; // [-x] GPIO pin for XSHUT (default: 4)
+uint8_t address = 0x29; // [-a] VL53L3CX I2C address (Default is 0x29)
+const char *argv0;
 
 void RangingLoop(void); 
 void ctrl_c_handler(int signal);
 
+static void help(void)
+{
+  printf("\n");
+  printf("This program continuously reads from the VL53L3CX sensor and optionally\n");
+  printf("provides the A, B or both histogram bin data.\n");
+  printf("\n");
+	printf("Usage: %s [options]\n", argv0);
+	printf("\n");
+  printf("Options:\n");
+  printf("  -a [address]\n");
+  printf("    Desired VL53L3CX I2C HEX address (default is 0x29).\n\n");  
+  printf("  -x [pin]\n");
+  printf("    GPIO pin for XSHUT, NOT the header physical pin number\n");
+  printf("    (default is 4, also called GPIO4).\n\n");
+  printf("  -p [ms]>\n");
+  printf("    Device polling period in ms (default is 100 ms).\n\n");
+  printf("  -t [ms]\n");
+  printf("    VL53L3CX timing budget [8ms - 500ms] (default is 33 ms).\n\n");
+  printf("  -g [A, B, AB]\n");
+  printf("    Enable the A, B, or both histograms.\n\n");
+  printf("  -f\n");
+  printf("    Print formatted readings.\n");
+  printf("\n");
+}
+
 int main(int argc, char *argv[])
 {
 
-
   int opt;
+  char hist_value[128];
+  argv0 = argv[0];
 
-  while ((opt = getopt(argc, argv, "bdp:t:")) != -1) {
+  // Print help if no arguments
+  if (argc == 1) {
+    help();
+    exit(EXIT_SUCCESS);
+  }
+
+  while ((opt = getopt(argc, argv, "a:dg:hp:t:x:")) != -1) {
     switch (opt) {
-      case 'b':
+      case 'a': // i2c address
+        address = strtol(optarg, NULL, 16);
+        break;
+      case 'g': // Read histogram mode
+        strncpy(hist_value, optarg, sizeof(hist_value));
+        if (strcmp(hist_value, "A") == 0) {
+          hist_mode = HIST_A;
+        } else if (strcmp(hist_value, "B") == 0) {
+          hist_mode = HIST_B;
+        } else if (strcmp(hist_value, "AB") == 0) {
+          hist_mode = HIST_BOTH;
+        } else {
+          printf("Invalid histogram mode: %s\n", hist_value);
+          exit(EXIT_FAILURE);
+        }
         hist_flag = true;
         break;
-      case 'd':
-        debug_flag = true;
+      case 'f': // Enable formatted debug messages
+        formatted_flag = true;
         break;
-      case 'p':
+      case 'p': // Device polling period
         poll_period = atoi(optarg);
         break;
-      case 't':
+      case 't': // VL53L3CX timing budget
         timing_budget = atoi(optarg);
         break;
-      case '?':
+      case 'x': // XSHUT GPIO pin
+        XSHUTPIN = atoi(optarg);
+        break;
+      case '?': 
+      case 'h':
+        help();
+        exit(EXIT_SUCCESS);
       default:
-        fprintf(stderr, "Usage: %s [-b] [-p poll_period (ms)] [-t timing_budget (8 - 500ms)]\n", argv[0]);
-        // fprintf(stderr, "Usage: %s [-b] [-p poll_period (ms)]\n", argv[0]);
-        // fprintf(stderr, "Usage: %s [-b]\n", argv[0]);
+        help();
         exit(EXIT_FAILURE);
     }
   }
@@ -319,7 +379,7 @@ void RangingLoop(void)
 
         strcat(data, tmp_data2);
         memset(tmp_data2, 0, sizeof(tmp_data2));
-        if (debug_flag) {
+        if (formatted_flag) {
         printf("Status=%d\nMin Distance=%d mm\nDistance=%d mm\nMax distance=%d mm\nSigma=%2.2f mm\nSignal Rate=%2.2f Mcps\nAmbient Rate=%2.2f Mcps\n",
                   pMultiRangingData->RangeData[j].RangeStatus,
                   pMultiRangingData->RangeData[j].RangeMinMilliMeter,
