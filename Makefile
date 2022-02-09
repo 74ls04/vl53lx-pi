@@ -2,13 +2,13 @@ CC = $(CROSS_COMPILE)gcc
 AR = $(CROSS_COMPILE)ar
 RM = rm
 
-CFLAGS = -O1 -g -Wall -c 
+CFLAGS = -O1 -g -Wall -c -Wunused-variable
 
 OUTPUT_DIR = bin
 OBJ_DIR = obj
 
-COMMON_LIBS = -lzmq
-TARGET_LIB = $(OUTPUT_DIR)/libVL53L3CX_pi.a
+# COMMON_LIBS = -lzmq
+TARGET_LIB = $(OUTPUT_DIR)/libVL53LX_pi.a
 
 INCLUDES = \
 	-I. \
@@ -46,10 +46,10 @@ LIB_SRCS = \
 
 LIB_OBJS  = $(LIB_SRCS:%.c=$(OBJ_DIR)/%.o)
 
-OPTICAL_SRC = \
-  optical/optical.c
+SRC = \
+  src/vl53lx_pi.c
 
-OPTICAL_BIN = $(OPTICAL_SRC:optical/%.c=$(OUTPUT_DIR)/%)
+BIN = $(SRC:src/%.c=$(OUTPUT_DIR)/%)
 
 
 .PHONY: all
@@ -63,11 +63,11 @@ $(OBJ_DIR)/%.o:%.c
 	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCLUDES) $< -o $@
 
-$(OPTICAL_BIN): bin/%:optical/%.c
+$(BIN): bin/%:src/%.c
 	mkdir -p $(dir $@)
-	$(CC) -L$(OUTPUT_DIR) $^ -lVL53L3CX_pi ${COMMON_LIBS} $(INCLUDES) -o $@
+	$(CC) -L$(OUTPUT_DIR) $^ -lVL53LX_pi $(INCLUDES) -o $@
 
-optical:${OUTPUT_DIR} ${TARGET_LIB} $(OPTICAL_BIN)
+vl53lx_pi:${OUTPUT_DIR} ${TARGET_LIB} $(BIN)
 
 .PHONY: clean
 clean:
