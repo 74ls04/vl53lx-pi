@@ -14,8 +14,7 @@ Based on the i2c port of https://github.com/74ls04/VL53L3CX_rasppi
 #include <stdarg.h>
 #include <vl53lx_api.h>
 #include "vl53lx_platform.h"
-#include <czmq.h>
-#include <assert.h>
+
 
 // Macro to turn printing on or off
 #define print(format, ...)                 \
@@ -89,10 +88,10 @@ enum hist_mode
 };
 
 // Command line options
-bool hist_flag = false;                                          // Flag to enable histogram mode
+int hist_flag = 0;                                          // Flag to enable histogram mode
 enum hist_mode hist_mode = HIST_BOTH;                            // [-g] Histogram mode. A, B, or AB for both. (default: B)
-bool compact_flag = false;                                       // [-f] Enable debug messages
-int quiet_flag = false;                                          // [-q] Disable debug messages
+int compact_flag = 0;                                       // [-f] Enable debug messages
+int quiet_flag = 0;                                          // [-q] Disable debug messages
 int poll_period = 33;                                            // [-p] Device polling period in (ms)
 int timing_budget = 33;                                          // [-t] VL53L3CX timing budget (8ms to 500ms)
 int XSHUTPIN = 4;                                                // [-x] GPIO pin for XSHUT (default: 4)
@@ -107,6 +106,7 @@ const char *argv0;
 static struct option long_options[] = {
     {"histogram",     required_argument,  NULL,         'g'},
     {"compact",       no_argument,        NULL,         'c'},
+    {"help",          no_argument,        NULL,         'h'},
     {"quiet",         no_argument,        &quiet_flag,  1},
     {"distance-mode", required_argument,  NULL,         'd'},
     {"poll-period",   required_argument,  NULL,         'p'},
@@ -161,12 +161,12 @@ int main(int argc, char *argv[])
     VL53LX_Error status;
     VL53LX_LLDriverData_t *pDev;
 
-    while ((opt = getopt_long(argc, argv, "g:cqd:p:t:x:a:", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "g:chqd:p:t:x:a:", long_options, NULL)) != -1)
     {
         switch (opt)
         {
         case 'g':
-            hist_flag = true;
+            hist_flag = 1;
             if (optarg)
             {
                 if (strcasecmp(optarg, "A") == 0)
@@ -189,10 +189,10 @@ int main(int argc, char *argv[])
             }
             break;
         case 'c':
-            compact_flag = true;
+            compact_flag = 1;
             break;
         case 'q':
-            quiet_flag = true;
+            quiet_flag = 1;
             break;
         case 'd':
             if (strcasecmp(optarg, "SHORT") == 0)
@@ -230,6 +230,10 @@ int main(int argc, char *argv[])
             break;
         case 'a':
             address = (uint8_t)strtol(optarg, NULL, 16);
+            break;
+        case 'h':
+            help();
+            exit(EXIT_SUCCESS);
             break;
         case '?':
             // printf("Unknown option %c\n", optopt);
@@ -410,7 +414,7 @@ void ranging_loop(void)
     uint8_t NewDataReady = 0;
     int no_of_object_found = 0;
     int j;
-    bool is_A;
+    int is_A;
     char tmp_data1[5], tmp_data2[512], data[3000];
     char histogram_data_buffer[500];
     char bin_buffer[5];
@@ -432,7 +436,7 @@ void ranging_loop(void)
             check_status(status);
 
             /*
-            From https://community.st.com/s/question/0D53W00000etcEZ/understanding-vl53l3cx-histogram-data
+            From: https://community.st.com/s/question/0D53W00000etcEZ/understanding-vl53l3cx-histogram-data
             We use:
             VL53LX_Error VL53LX_GetAdditionalData(VL53LX_DEV Dev,
             VL53LX_AdditionalData_t *pAdditionalData)
@@ -444,7 +448,7 @@ void ranging_loop(void)
             So if you use VL53LX_GetAdditionalData and plot starting at bin 6 of the odd ranges and bin 2 of the even ranges you will do better.
             The A ranges have 20 valid bins, the B ranges have 24 valid ones.
 
-            From https://community.st.com/s/question/0D53W00001Gl6B2SAJ/can-someone-please-post-sample-code-on-how-to-get-histogram-data-from-vl53l3cx-i-have-the-dev-board-nucleo-f401-re-and-the-both-the-sensor-and-the-eval-kit
+            From: https://community.st.com/s/question/0D53W00001Gl6B2SAJ/can-someone-please-post-sample-code-on-how-to-get-histogram-data-from-vl53l3cx-i-have-the-dev-board-nucleo-f401-re-and-the-both-the-sensor-and-the-eval-kit
 
             But it's not quite that easy. There are 2 ranges and they toggle back an forth. One range consists of 4 bins of ambient light and 20 data bins.
             The alternating range consists of 24 range bins.
