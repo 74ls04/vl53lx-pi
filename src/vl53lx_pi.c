@@ -14,7 +14,8 @@ Based on the i2c port of https://github.com/74ls04/VL53L3CX_rasppi
 #include <stdarg.h>
 #include <vl53lx_api.h>
 #include "vl53lx_platform.h"
-
+#include <czmq.h>
+#include <assert.h>
 
 // Macro to turn printing on or off
 #define print(format, ...)                 \
@@ -88,10 +89,11 @@ enum hist_mode
 };
 
 // Command line options
-int hist_flag = 0;                                          // Flag to enable histogram mode
+int hist_flag = 0;                                               // Flag to enable histogram mode
 enum hist_mode hist_mode = HIST_BOTH;                            // [-g] Histogram mode. A, B, or AB for both. (default: B)
-int compact_flag = 0;                                       // [-f] Enable debug messages
-int quiet_flag = 0;                                          // [-q] Disable debug messages
+int compact_flag = 0;                                            // [-f] Enable debug messages
+int quiet_flag = 0;                                              // [-q] Disable debug messages
+int tcp_port = 5556;                                             // [-p] TCP port to publish on
 int poll_period = 33;                                            // [-p] Device polling period in (ms)
 int timing_budget = 33;                                          // [-t] VL53L3CX timing budget (8ms to 500ms)
 int XSHUTPIN = 4;                                                // [-x] GPIO pin for XSHUT (default: 4)
@@ -104,19 +106,19 @@ const char *argv0;
 
 // Long options
 static struct option long_options[] = {
-    {"histogram",     required_argument,  NULL,         'g'},
-    {"compact",       no_argument,        NULL,         'c'},
-    {"help",          no_argument,        NULL,         'h'},
-    {"quiet",         no_argument,        &quiet_flag,  1},
-    {"distance-mode", required_argument,  NULL,         'd'},
-    {"poll-period",   required_argument,  NULL,         'p'},
-    {"timing-budget", required_argument,  NULL,         't'},
-    {"xshut-pin",     required_argument,  NULL,         'x'},
-    {"address",       required_argument,  NULL,         'a'},
-    {NULL,            0,                  NULL,         0}
-};
+    {"histogram", required_argument, NULL, 'g'},
+    {"compact", no_argument, NULL, 'c'},
+    {"help", no_argument, NULL, 'h'},
+    {"quiet", no_argument, &quiet_flag, 1},
+    {"distance-mode", required_argument, NULL, 'd'},
+    {"port", required_argument, NULL, 'p'},
+    {"poll-period", required_argument, NULL, 'm'},
+    {"timing-budget", required_argument, NULL, 't'},
+    {"xshut-pin", required_argument, NULL, 'x'},
+    {"address", required_argument, NULL, 'a'},
+    {NULL, 0, NULL, 0}};
 
-void ranging_loop(void); 
+void ranging_loop(void);
 void signal_handler(int signal);
 void check_status(int status);
 
@@ -129,7 +131,8 @@ static void help(void)
     printf("  -c, --compact\t\t\t\tEnable compact mode.\n");
     printf("  -q, --quiet\t\t\t\tDisable debug messages.\n");
     printf("  -d, --distance-mode=MODE\t\tSet distance mode. SHORT, MEDIUM, or LONG.\n");
-    printf("  -p, --poll-period=MILLISECONDS\tSet device polling period in (ms). Default 33 ms.\n");
+    printf("  -p, --port=NUMBER\t\t\tSet the port number for publishing data. Default 5556.\n");
+    printf("  -m, --poll-period=MILLISECONDS\tSet device polling period in (ms). Default 33 ms.\n");
     printf("  -t, --timing-budget=MILLISECONDS\tSet VL53L3CX timing budget (8ms to 500ms). Default 33 ms.\n");
     printf("  -x, --xshut-pin=NUMBER\t\tSet GPIO pin for XSHUT.\n");
     printf("  -a, --address=ADDRESS\t\t\tSet VL53L3CX I2C address.\n");
@@ -161,7 +164,7 @@ int main(int argc, char *argv[])
     VL53LX_Error status;
     VL53LX_LLDriverData_t *pDev;
 
-    while ((opt = getopt_long(argc, argv, "g:chqd:p:t:x:a:", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "g:chqd:p:t:m:x:a:", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -214,6 +217,9 @@ int main(int argc, char *argv[])
             }
             break;
         case 'p':
+            tcp_port = atoi(optarg);
+            break;
+        case 'm':
             poll_period = atoi(optarg);
             break;
         case 't':
@@ -302,7 +308,7 @@ int main(int argc, char *argv[])
     // Initialize the i2c bus
     print("Initializing I2C bus...\n");
     Dev->i2c_slave_address = 0x29;
-    Dev->fd = VL53LX_i2c_init("/dev/i2c-1", Dev->i2c_slave_address); //choose between i2c-0 and i2c-1; On the raspberry pi zero, i2c-1 are pins 2 and 3
+    Dev->fd = VL53LX_i2c_init("/dev/i2c-1", Dev->i2c_slave_address); // choose between i2c-0 and i2c-1; On the raspberry pi zero, i2c-1 are pins 2 and 3
     if (Dev->fd < 0)
     {
         print("Failed to init 4\n");
@@ -405,6 +411,14 @@ void signal_handler(int signal)
 // Ranging loop
 void ranging_loop(void)
 {
+    // Socket to talk to clients
+    void *context = zmq_ctx_new();
+    void *publisher = zmq_socket(context, ZMQ_PUB);
+    // create ip string with tcp port
+    char ip_string[20];
+    sprintf(ip_string, "tcp://*:%d", tcp_port);
+    int rc = zmq_bind(publisher, ip_string);
+    assert(rc == 0);
 
     VL53LX_MultiRangingData_t MultiRangingData;
     VL53LX_MultiRangingData_t *pMultiRangingData = &MultiRangingData;
@@ -455,7 +469,7 @@ void ranging_loop(void)
             Range on a flat wall print out the 24 bins, gathering the data into a spreadsheet.
             You will soon figure it out.
             (The two range timing have to do with a search for 'radar aliasing' effects. google it.)
-            And each bin is about 20cm worth of distance. 
+            And each bin is about 20cm worth of distance.
             */
 
             no_of_object_found = pMultiRangingData->NumberOfObjectsFound;
@@ -577,6 +591,7 @@ void ranging_loop(void)
 
                     if (compact_flag)
                     {
+                        rc = zmq_send(publisher, data, strlen(data), 0);
                         printf("%s\n", data);
                     }
                     else
@@ -593,11 +608,13 @@ void ranging_loop(void)
                     memset(data, 0, sizeof(data));
                 }
             }
-
-            if (status == 0)
-            {
-                status = VL53LX_ClearInterruptAndStartMeasurement(Dev);
-            }
         }
+
+        status = VL53LX_ClearInterruptAndStartMeasurement(Dev);
+        check_status(status);
+
     } while (1);
+
+    zmq_close(publisher);
+    zmq_ctx_destroy(context);
 }

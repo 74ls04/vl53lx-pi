@@ -7,7 +7,7 @@ CFLAGS = -O1 -g -Wall -c -Wunused-variable
 OUTPUT_DIR = bin
 OBJ_DIR = obj
 
-# COMMON_LIBS = -lzmq
+COMMON_LIBS = -lzmq
 TARGET_LIB = $(OUTPUT_DIR)/libVL53LX_pi.a
 
 INCLUDES = \
@@ -65,7 +65,7 @@ $(OBJ_DIR)/%.o:%.c
 
 $(BIN): bin/%:src/%.c
 	mkdir -p $(dir $@)
-	$(CC) -L$(OUTPUT_DIR) $^ -lVL53LX_pi $(INCLUDES) -o $@
+	$(CC) -L$(OUTPUT_DIR) $^ -lVL53LX_pi $(COMMON_LIBS) $(INCLUDES) -o $@
 
 vl53lx_pi:${OUTPUT_DIR} ${TARGET_LIB} $(BIN)
 
