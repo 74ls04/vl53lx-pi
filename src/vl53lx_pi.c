@@ -110,8 +110,8 @@ static struct option long_options[] = {
     {"compact", no_argument, NULL, 'c'},
     {"help", no_argument, NULL, 'h'},
     {"quiet", no_argument, &quiet_flag, 1},
-    {"distance-mode", required_argument, NULL, 'd'},
     {"port", required_argument, NULL, 'p'},
+    {"distance-mode", required_argument, NULL, 'd'},
     {"poll-period", required_argument, NULL, 'm'},
     {"timing-budget", required_argument, NULL, 't'},
     {"xshut-pin", required_argument, NULL, 'x'},
@@ -488,62 +488,58 @@ void ranging_loop(void)
                         printf("Count:     %d,\n", pMultiRangingData->StreamCount);
                         printf("# Objs:    %1d\n", no_of_object_found);
                     }
-                    else
+
+                    sprintf(tmp_data1, "%d ", pMultiRangingData->StreamCount);
+                    strcat(data, tmp_data1);
+                    memset(tmp_data1, 0, sizeof(tmp_data1));
+
+                    // if (hist_flag)
+                    // {
+
+                    VL53LX_GetAdditionalData(Dev, pAdditionalData);
+
+                    // Convert the histogram data to a comma-separated string
+                    if ((hist_mode == HIST_A && is_A) || (hist_mode == HIST_BOTH && is_A))
                     {
-                        sprintf(tmp_data1, "%d ", pMultiRangingData->StreamCount);
-                        strcat(data, tmp_data1);
-                        memset(tmp_data1, 0, sizeof(tmp_data1));
+                        for (j = 5; j < VL53LX_HISTOGRAM_BUFFER_SIZE; j++)
+                        {
+                            if (j == VL53LX_HISTOGRAM_BUFFER_SIZE - 1)
+                            {
+                                sprintf(bin_buffer, "%d ", pAdditionalData->VL53LX_p_006.bin_data[j]);
+                                strcat(histogram_data_buffer, bin_buffer);
+                            }
+                            else
+                            {
+                                sprintf(bin_buffer, "%d,", pAdditionalData->VL53LX_p_006.bin_data[j]);
+                                strcat(histogram_data_buffer, bin_buffer);
+                            }
+                        }
                     }
-
-                    if (hist_flag)
+                    else if ((hist_mode == HIST_B && !is_A) || (hist_mode == HIST_BOTH && !is_A))
                     {
-
-                        VL53LX_GetAdditionalData(Dev, pAdditionalData);
-
-                        // Convert the histogram data to a comma-separated string
-                        if ((hist_mode == HIST_A && is_A) || (hist_mode == HIST_BOTH && is_A))
+                        for (j = 1; j < VL53LX_HISTOGRAM_BUFFER_SIZE; j++)
                         {
-                            for (j = 5; j < VL53LX_HISTOGRAM_BUFFER_SIZE; j++)
+                            if (j == VL53LX_HISTOGRAM_BUFFER_SIZE - 1)
                             {
-                                if (j == VL53LX_HISTOGRAM_BUFFER_SIZE - 1)
-                                {
-                                    sprintf(bin_buffer, "%d ", pAdditionalData->VL53LX_p_006.bin_data[j]);
-                                    strcat(histogram_data_buffer, bin_buffer);
-                                }
-                                else
-                                {
-                                    sprintf(bin_buffer, "%d,", pAdditionalData->VL53LX_p_006.bin_data[j]);
-                                    strcat(histogram_data_buffer, bin_buffer);
-                                }
+                                sprintf(bin_buffer, "%d ", pAdditionalData->VL53LX_p_006.bin_data[j]);
+                                strcat(histogram_data_buffer, bin_buffer);
                             }
-                        }
-                        else if ((hist_mode == HIST_B && !is_A) || (hist_mode == HIST_BOTH && !is_A))
-                        {
-                            for (j = 1; j < VL53LX_HISTOGRAM_BUFFER_SIZE; j++)
+                            else
                             {
-                                if (j == VL53LX_HISTOGRAM_BUFFER_SIZE - 1)
-                                {
-                                    sprintf(bin_buffer, "%d ", pAdditionalData->VL53LX_p_006.bin_data[j]);
-                                    strcat(histogram_data_buffer, bin_buffer);
-                                }
-                                else
-                                {
-                                    sprintf(bin_buffer, "%d,", pAdditionalData->VL53LX_p_006.bin_data[j]);
-                                    strcat(histogram_data_buffer, bin_buffer);
-                                }
+                                sprintf(bin_buffer, "%d,", pAdditionalData->VL53LX_p_006.bin_data[j]);
+                                strcat(histogram_data_buffer, bin_buffer);
                             }
-                        }
-
-                        if (!compact_flag)
-                        {
-                            printf("Histogram: %s\n", histogram_data_buffer);
-                        }
-                        else
-                        {
-                            strcat(data, histogram_data_buffer);
                         }
                     }
 
+                    strcat(data, histogram_data_buffer);
+
+                    if (!compact_flag)
+                    {
+                        printf("Histogram: %s\n", histogram_data_buffer);
+                    }
+
+                    // }
                     for (j = 0; j < no_of_object_found; j++)
                     {
 
@@ -558,40 +554,38 @@ void ranging_loop(void)
                                    pMultiRangingData->RangeData[j].SignalRateRtnMegaCps / 65536.0,
                                    pMultiRangingData->RangeData[j].AmbientRateRtnMegaCps / 65536.0);
                         }
+
+                        if (j == no_of_object_found - 1)
+                        {
+                            sprintf(tmp_data2, "%d,%d,%d,%d,%2.2f,%2.2f,%2.2f",
+                                    pMultiRangingData->RangeData[j].RangeStatus,
+                                    pMultiRangingData->RangeData[j].RangeMinMilliMeter,
+                                    pMultiRangingData->RangeData[j].RangeMilliMeter,
+                                    pMultiRangingData->RangeData[j].RangeMaxMilliMeter,
+                                    pMultiRangingData->RangeData[j].SigmaMilliMeter / 65536.0,
+                                    pMultiRangingData->RangeData[j].SignalRateRtnMegaCps / 65536.0,
+                                    pMultiRangingData->RangeData[j].AmbientRateRtnMegaCps / 65536.0);
+                        }
                         else
                         {
-
-                            if (j == no_of_object_found - 1)
-                            {
-                                sprintf(tmp_data2, "%d,%d,%d,%d,%2.2f,%2.2f,%2.2f",
-                                        pMultiRangingData->RangeData[j].RangeStatus,
-                                        pMultiRangingData->RangeData[j].RangeMinMilliMeter,
-                                        pMultiRangingData->RangeData[j].RangeMilliMeter,
-                                        pMultiRangingData->RangeData[j].RangeMaxMilliMeter,
-                                        pMultiRangingData->RangeData[j].SigmaMilliMeter / 65536.0,
-                                        pMultiRangingData->RangeData[j].SignalRateRtnMegaCps / 65536.0,
-                                        pMultiRangingData->RangeData[j].AmbientRateRtnMegaCps / 65536.0);
-                            }
-                            else
-                            {
-                                sprintf(tmp_data2, "%d,%d,%d,%d,%2.2f,%2.2f,%2.2f ",
-                                        pMultiRangingData->RangeData[j].RangeStatus,
-                                        pMultiRangingData->RangeData[j].RangeMinMilliMeter,
-                                        pMultiRangingData->RangeData[j].RangeMilliMeter,
-                                        pMultiRangingData->RangeData[j].RangeMaxMilliMeter,
-                                        pMultiRangingData->RangeData[j].SigmaMilliMeter / 65536.0,
-                                        pMultiRangingData->RangeData[j].SignalRateRtnMegaCps / 65536.0,
-                                        pMultiRangingData->RangeData[j].AmbientRateRtnMegaCps / 65536.0);
-                            }
-
-                            strcat(data, tmp_data2);
-                            memset(tmp_data2, 0, sizeof(tmp_data2));
+                            sprintf(tmp_data2, "%d,%d,%d,%d,%2.2f,%2.2f,%2.2f ",
+                                    pMultiRangingData->RangeData[j].RangeStatus,
+                                    pMultiRangingData->RangeData[j].RangeMinMilliMeter,
+                                    pMultiRangingData->RangeData[j].RangeMilliMeter,
+                                    pMultiRangingData->RangeData[j].RangeMaxMilliMeter,
+                                    pMultiRangingData->RangeData[j].SigmaMilliMeter / 65536.0,
+                                    pMultiRangingData->RangeData[j].SignalRateRtnMegaCps / 65536.0,
+                                    pMultiRangingData->RangeData[j].AmbientRateRtnMegaCps / 65536.0);
                         }
+
+                        strcat(data, tmp_data2);
+                        memset(tmp_data2, 0, sizeof(tmp_data2));
                     }
+
+                    rc = zmq_send(publisher, data, strlen(data), 0);
 
                     if (compact_flag)
                     {
-                        rc = zmq_send(publisher, data, strlen(data), 0);
                         printf("%s\n", data);
                     }
                     else
@@ -600,11 +594,11 @@ void ranging_loop(void)
                     }
 
                     // clear buffers
-                    if (hist_flag)
-                    {
-                        memset(histogram_data_buffer, 0, sizeof(histogram_data_buffer));
-                        memset(bin_buffer, 0, sizeof(bin_buffer));
-                    }
+                    // if (hist_flag)
+                    // {
+                    memset(histogram_data_buffer, 0, sizeof(histogram_data_buffer));
+                    memset(bin_buffer, 0, sizeof(bin_buffer));
+                    // }
                     memset(data, 0, sizeof(data));
                 }
             }
