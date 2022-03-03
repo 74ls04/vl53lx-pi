@@ -1,11 +1,14 @@
 # VL53L3CX Raspberry Pi C Library
 
 
-## Screenshot
+## Screenshots
+C program:
 ![Wiring diagram](screenshot.png)
-
+Python subscriber:
+![Wiring diagram](screenshot2.png)
 ## Wiring
 ![Wiring diagram](pinout.png)
+
 
 ## Build from source
 You can build the application from source using the following steps:
@@ -23,9 +26,9 @@ You can build the application from source using the following steps:
 
         ./bin/vl53lx-pi
 
-To publish the data over the network on default port `5556` you must use the compact flag `--compact` or `-c`. For example to publish histogram B data only, use the command
+To publish the data over the network on default port `5556` using histogram B data only, use the command:
         
-        ./bin/vl53lx_pi --compact --histogram=B
+        ./bin/vl53lx_pi --histogram=B
 
 ## Configure and start
 To start the application, you can use the `vl53lx_pi` executable. There are several things you can configure:
